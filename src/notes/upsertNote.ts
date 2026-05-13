@@ -5,6 +5,7 @@ import type { FrontmatterValueMap, NoteManagementMode, RenderedPocketNote } from
 
 const MANAGED_FRONTMATTER_KEYS = [
 	"kind",
+	"artifact",
 	"source",
 	"recording_id",
 	"recording_ids",
@@ -252,7 +253,7 @@ async function ensureFolder(app: App, notePath: string): Promise<void> {
 	for (let index = 0; index < parts.length; index += 1) {
 		const partialPath = normalizePath(parts.slice(0, index + 1).join("/"));
 		if (!app.vault.getAbstractFileByPath(partialPath)) {
-			await app.vault.createFolder(partialPath);
+			await app.vault.adapter.mkdir(partialPath);
 		}
 	}
 }

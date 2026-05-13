@@ -5,7 +5,7 @@ export const POCKET_API_KEYS_URL = "https://app.heypocket.com/app/settings/api-k
 
 export const DEFAULT_BASE_FOLDER = "Pocket";
 export const DEFAULT_CONVERSATION_FOLDER = "Conversations";
-export const DEFAULT_DAILY_HIGHLIGHTS_FOLDER = "Daily highlights";
+export const DEFAULT_INSIGHTS_FOLDER = "Insights";
 export const DEFAULT_ARCHIVE_FOLDER = "Archive";
 export const DEFAULT_DIAGNOSTICS_FOLDER = "Diagnostics";
 export const DEFAULT_FIRST_SYNC_DATE = "2025-10-05";
@@ -32,5 +32,6 @@ export const DEFAULT_PAGE_SIZE = 50;
 export const DEFAULT_SYNC_INTERVAL_MINUTES = 60;
 export const DEFAULT_RETRY_COUNT = 3;
 export const DEFAULT_RETRY_DELAY_MS = 1500;
-export const DEFAULT_DAILY_HIGHLIGHTS_TAG = "highlights";
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+export const DEFAULT_INSIGHTS_TAG = "highlights";
 

@@ -1,5 +1,15 @@
-import type { NormalizedPocketRecording, PocketSyncSettings, RenderedPocketNote } from "../types";
-import { buildInlineTagLine, buildMetadataSection, buildPocketFrontmatter, buildSummarySection, buildTranscriptSection } from "./renderShared";
+import type { ConversationArtifactKind, NormalizedPocketRecording, PocketSyncSettings, RenderedPocketNote } from "../types";
+import {
+	buildActionItemsMarkdownBody,
+	buildInlineTagLine,
+	buildMetadataSection,
+	buildMindMapMarkdownBody,
+	buildPocketFrontmatter,
+	buildSummaryMarkdownBody,
+	buildSummarySection,
+	buildTranscriptMarkdownBody,
+	buildTranscriptSection,
+} from "./renderShared";
 
 export function renderConversationNote(
 	recording: NormalizedPocketRecording,
@@ -47,5 +57,55 @@ export function renderConversationNote(
 		body: sections.filter(Boolean).join("\n\n").trim(),
 		frontmatter: buildPocketFrontmatter([recording], settings, syncedAt),
 	};
+}
+
+export function renderConversationArtifactNote(
+	recording: NormalizedPocketRecording,
+	settings: PocketSyncSettings,
+	syncedAt: string,
+	artifactKind: ConversationArtifactKind,
+): RenderedPocketNote {
+	const title = `${recording.title} ${artifactTitle(artifactKind)}`;
+	const body = renderConversationArtifactBody(recording, settings, artifactKind);
+	return {
+		title,
+		body,
+		frontmatter: {
+			...buildPocketFrontmatter([recording], settings, syncedAt),
+			artifact: artifactKind,
+		},
+	};
+}
+
+export function renderConversationArtifactBody(
+	recording: NormalizedPocketRecording,
+	settings: PocketSyncSettings,
+	artifactKind: ConversationArtifactKind,
+): string {
+	if (artifactKind === "transcript") {
+		return buildTranscriptMarkdownBody(recording, settings).trim();
+	}
+
+	if (artifactKind === "summary") {
+		return buildSummaryMarkdownBody(recording, settings).trim();
+	}
+
+	if (artifactKind === "action-items") {
+		return buildActionItemsMarkdownBody(recording, settings).trim();
+	}
+
+	return buildMindMapMarkdownBody(recording, settings).trim();
+}
+
+function artifactTitle(artifactKind: ConversationArtifactKind): string {
+	if (artifactKind === "action-items") {
+		return "action items";
+	}
+
+	if (artifactKind === "mindmap") {
+		return "mind map";
+	}
+
+	return artifactKind;
 }
 

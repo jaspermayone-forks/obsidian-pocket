@@ -1,4 +1,4 @@
-import { DEFAULT_DAILY_HIGHLIGHTS_TAG } from "../constants";
+import { DEFAULT_INSIGHTS_TAG } from "../constants";
 import type {
 	NormalizedPocketRecording,
 	PocketActionItem,
@@ -94,7 +94,7 @@ export function normalizeRecordingDetail(
 
 	const summary = normalizeLatestSummary(value);
 	const transcript = normalizeTranscript(value);
-	const kind = isDailyHighlightRecording(fallback, settings.dailyHighlightsTag) ? "daily-highlight" : "conversation";
+	const kind = isInsightRecording(fallback, settings.insightsTag) ? "insight" : "conversation";
 
 	return {
 		id,
@@ -112,11 +112,11 @@ export function normalizeRecordingDetail(
 	};
 }
 
-export function isDailyHighlightRecording(
+export function isInsightRecording(
 	recording: Pick<PocketRecordingListItem, "id" | "tags">,
-	dailyHighlightsTag: string,
+	insightsTag: string,
 ): boolean {
-	const normalizedTag = dailyHighlightsTag.trim().toLowerCase() || DEFAULT_DAILY_HIGHLIGHTS_TAG;
+	const normalizedTag = insightsTag.trim().toLowerCase() || DEFAULT_INSIGHTS_TAG;
 
 	return (
 		recording.id.startsWith("daily-highlights-") ||
@@ -158,7 +158,7 @@ function normalizeLatestSummary(recording: JsonRecord): PocketSummary | null {
 			return rightTime - leftTime;
 		});
 
-	return normalized[0] ?? null;
+	return normalized.find((summary) => summary.processingStatus === "completed") ?? normalized[0] ?? null;
 }
 
 function normalizeSummary(raw: unknown, fallbackSummarizationId: string): PocketSummary | null {
@@ -169,6 +169,7 @@ function normalizeSummary(raw: unknown, fallbackSummarizationId: string): Pocket
 
 	const summaryRoot = asRecord(asRecord(value.v2)?.summary) ?? {};
 	const actionItemsRoot = asRecord(asRecord(value.v2)?.actionItems) ?? {};
+	const mindMap = asRecord(value.v2)?.mindMap ?? null;
 	const summaryId = getString(value, "id") ?? fallbackSummarizationId;
 
 	return {
@@ -185,6 +186,7 @@ function normalizeSummary(raw: unknown, fallbackSummarizationId: string): Pocket
 			? coerceStringArray(getArray(summaryRoot, "bullet_points"))
 			: coerceStringArray(getArray(summaryRoot, "bulletPoints")),
 		actionItems: normalizeActionItems(actionItemsRoot),
+		mindMap,
 		autoInitiated: getBoolean(value, "autoInitiated"),
 		createdAt: getNullableString(value, "createdAt"),
 		updatedAt: getNullableString(value, "updatedAt"),

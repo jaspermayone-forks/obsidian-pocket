@@ -13,7 +13,7 @@ export class SyncReportModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl("h2", { text: "Pocket sync report" });
 
-		const summary = contentEl.createEl("div");
+		const summary = contentEl.createDiv();
 		summary.createEl("p", { text: `Started: ${formatDisplayDateTime(this.report.startedAt)}` });
 		summary.createEl("p", { text: `Finished: ${formatDisplayDateTime(this.report.finishedAt)}` });
 		summary.createEl("p", { text: `Scope: ${this.report.scope}` });

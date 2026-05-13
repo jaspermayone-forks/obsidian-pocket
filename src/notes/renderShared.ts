@@ -84,6 +84,27 @@ export function buildSummarySection(
 	return sections.join("\n\n");
 }
 
+export function buildSummaryMarkdownBody(
+	recording: NormalizedPocketRecording,
+	settings: Pick<PocketSyncSettings, "includeSummaryMarkdown" | "includeBulletHighlights">,
+): string {
+	const summary = recording.summary;
+	if (!summary) {
+		return "";
+	}
+
+	const sections: string[] = [];
+	if (settings.includeSummaryMarkdown && summary.markdown.trim()) {
+		sections.push(summary.markdown.trim());
+	}
+
+	if (settings.includeBulletHighlights && summary.bulletPoints.length > 0) {
+		sections.push(`# Highlights\n\n${summary.bulletPoints.map((point) => `- ${point}`).join("\n")}`);
+	}
+
+	return sections.join("\n\n");
+}
+
 export function buildTranscriptSection(
 	recording: NormalizedPocketRecording,
 	settings: Pick<PocketSyncSettings, "includeTranscript" | "includeTranscriptTimestamps">,
@@ -103,6 +124,54 @@ export function buildTranscriptSection(
 	});
 
 	return `## Transcript\n${lines.join("\n\n")}`;
+}
+
+export function buildTranscriptMarkdownBody(
+	recording: NormalizedPocketRecording,
+	settings: Pick<PocketSyncSettings, "includeTranscript" | "includeTranscriptTimestamps">,
+): string {
+	if (!settings.includeTranscript || !recording.transcript) {
+		return "";
+	}
+
+	if (recording.transcript.segments.length === 0) {
+		return recording.transcript.text.trim();
+	}
+
+	return recording.transcript.segments
+		.map((segment) => {
+			const speaker = segment.speaker ?? "SPEAKER";
+			const timestamp = settings.includeTranscriptTimestamps ? `[${formatTranscriptTimestamp(segment.start)}] ` : "";
+			const text = (segment.text || segment.originalText || "").trim();
+			return `${timestamp}${speaker}: ${text}`;
+		})
+		.filter((line) => !line.endsWith(": "))
+		.join("\n");
+}
+
+export function buildActionItemsMarkdownBody(
+	recording: NormalizedPocketRecording,
+	settings: Pick<
+		PocketSyncSettings,
+		"renderActionItemsAsChecklist" | "includeActionItemDueDate" | "includeActionItemStatus" | "hideCompletedActionItems"
+	>,
+): string {
+	if (!recording.summary || recording.summary.actionItems.length === 0) {
+		return "";
+	}
+
+	return renderActionItems(recording.summary.actionItems, settings);
+}
+
+export function buildMindMapMarkdownBody(
+	recording: NormalizedPocketRecording,
+	settings: Pick<PocketSyncSettings, "includeMindMap">,
+): string {
+	if (!settings.includeMindMap || !recording.summary?.mindMap) {
+		return "";
+	}
+
+	return formatMindMapMarkdown(recording.summary.mindMap);
 }
 
 export function buildPocketFrontmatter(
@@ -156,7 +225,7 @@ export function buildPocketFrontmatter(
 	return frontmatter;
 }
 
-function renderActionItems(
+export function renderActionItems(
 	actionItems: PocketActionItem[],
 	settings: Pick<
 		PocketSyncSettings,
@@ -168,6 +237,131 @@ function renderActionItems(
 		.flatMap((item) => renderActionItem(item, settings));
 
 	return lines.join("\n");
+}
+
+function formatMindMapMarkdown(mindMap: unknown): string {
+	if (!mindMap) {
+		return "";
+	}
+
+	if (typeof mindMap === "string") {
+		return mindMap.trim();
+	}
+
+	const nodes = getMindMapNodes(mindMap);
+	if (nodes.length === 0) {
+		try {
+			return ["```json", JSON.stringify(mindMap, null, 2), "```"].join("\n");
+		} catch {
+			return "[Invalid mind map data]";
+		}
+	}
+
+	const nodesById = new Map(nodes.map((node) => [node.id, node]));
+	const childrenByParentId = new Map<string, typeof nodes>();
+
+	for (const node of nodes) {
+		if (!node.parentId || !nodesById.has(node.parentId)) {
+			continue;
+		}
+		const children = childrenByParentId.get(node.parentId) ?? [];
+		children.push(node);
+		childrenByParentId.set(node.parentId, children);
+	}
+
+	const roots = nodes.filter((node) => !node.parentId || !nodesById.has(node.parentId));
+	const lines: string[] = [];
+	const visited = new Set<string>();
+
+	const renderNode = (node: (typeof nodes)[number], depth: number) => {
+		if (visited.has(node.id)) {
+			return;
+		}
+		visited.add(node.id);
+		lines.push(`${"  ".repeat(depth)}- ${node.title}`);
+		for (const child of childrenByParentId.get(node.id) ?? []) {
+			renderNode(child, depth + 1);
+		}
+	};
+
+	for (const root of roots) {
+		renderNode(root, 0);
+	}
+
+	for (const node of nodes) {
+		renderNode(node, 0);
+	}
+
+	return lines.join("\n");
+}
+
+function getMindMapNodes(mindMap: unknown): Array<{ id: string; parentId: string | null; title: string }> {
+	if (!mindMap || typeof mindMap !== "object") {
+		return [];
+	}
+
+	const value = mindMap as Record<string, unknown>;
+	const rawNodes = Array.isArray(value.nodes)
+		? value.nodes
+		: Array.isArray(value.mnodes)
+			? value.mnodes
+			: Array.isArray(value.items)
+				? value.items
+				: null;
+
+	if (!rawNodes) {
+		return [];
+	}
+
+	const parentIdsByNodeId = new Map<string, string>();
+	if (Array.isArray(value.edges)) {
+		for (const edge of value.edges) {
+			const edgeRecord = asRecord(edge);
+			if (!edgeRecord) {
+				continue;
+			}
+			const source = stringifyMindMapValue(edgeRecord.source ?? edgeRecord.from ?? edgeRecord.parent ?? edgeRecord.sourceId);
+			const target = stringifyMindMapValue(edgeRecord.target ?? edgeRecord.to ?? edgeRecord.child ?? edgeRecord.targetId);
+			if (source && target) {
+				parentIdsByNodeId.set(target, source);
+			}
+		}
+	}
+
+	return rawNodes.map((node, index) => {
+		const nodeRecord = asRecord(node) ?? ({} as Record<string, unknown>);
+		const id = getMindMapNodeId(nodeRecord, index);
+		return {
+			id,
+			parentId: getMindMapNodeParentId(nodeRecord) ?? parentIdsByNodeId.get(id) ?? null,
+			title: getMindMapNodeTitle(nodeRecord),
+		};
+	});
+}
+
+function getMindMapNodeId(node: Record<string, unknown>, index: number): string {
+	return stringifyMindMapValue(node.id ?? node.node_id ?? node.nodeId ?? node.key) ?? `node-${index}`;
+}
+
+function getMindMapNodeTitle(node: Record<string, unknown>): string {
+	return stringifyMindMapValue(node.title ?? node.label ?? node.name ?? node.text ?? node.content)?.trim() || "Untitled";
+}
+
+function getMindMapNodeParentId(node: Record<string, unknown>): string | null {
+	const parentId = node.parent_node_id ?? node.parentNodeId ?? node.parentId ?? node.parent;
+	return stringifyMindMapValue(parentId);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function stringifyMindMapValue(value: unknown): string | null {
+	if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+		return String(value);
+	}
+
+	return null;
 }
 
 function renderActionItem(

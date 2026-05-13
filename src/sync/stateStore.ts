@@ -30,6 +30,10 @@ export class SyncStateStore {
 		this.state.lastConnectionSucceededAt = at;
 	}
 
+	updateSyncMessage(message: string): void {
+		this.state.lastSyncMessage = message;
+	}
+
 	completeSync(report: SyncReport): void {
 		this.state.lastSyncReport = report;
 		this.state.lastSyncStatus = report.errors.length > 0 ? "error" : "success";
@@ -58,7 +62,7 @@ export class SyncStateStore {
 		}
 	}
 
-	markArchived(recordIds: string[], archivedAt: string, archivePath: string): void {
+	markArchived(recordIds: string[], archivedAt: string, archivePath: string, artifactPaths: string[] = [archivePath]): void {
 		for (const recordId of recordIds) {
 			const existing = this.state.records[recordId];
 			if (!existing) {
@@ -67,6 +71,7 @@ export class SyncStateStore {
 
 			existing.archivedAt = archivedAt;
 			existing.notePath = archivePath;
+			existing.artifactPaths = artifactPaths;
 		}
 	}
 

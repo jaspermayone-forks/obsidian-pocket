@@ -2,12 +2,12 @@
 
 ![Pocket Sync](obsidian-pocket.png)
 
-Sync Pocket AI conversations and daily highlights into Markdown notes.
+Sync Pocket AI conversations and insights into Markdown notes.
 
 ## Features
 
-- Sync conversations, summaries, action items, and transcripts
-- Sync daily highlights tagged with `highlights`
+- Sync conversations into split transcript, summary, action item, and mind map notes
+- Sync insights tagged with `highlights`
 - Auto-sync, startup sync, and manual sync
 - Custom folders and filename templates
 - Writes Pocket metadata as normal Obsidian properties
@@ -23,10 +23,10 @@ Sync Pocket AI conversations and daily highlights into Markdown notes.
 
 ## Default output
 
-- Conversations: `Pocket/Conversations`
-- Daily highlights: `Pocket/Daily highlights`
-- Conversation filename: `{{date}} {{title}}`
-- Daily highlight filename: `{{date}} Daily highlights`
+- Conversations: `Pocket/Conversations/{YYYY-MM-DD}/{Title}`
+- Insights: `Pocket/Insights`
+- Conversation artifacts: `transcript.md`, `summary.md`, `action-items.md`, `mindmap.md`
+- Insight filename: `{{date}} {{title}}`
 
 ## Notes
 

@@ -56,11 +56,7 @@ export function formatTranscriptTimestamp(seconds: number): string {
 	const minutes = Math.floor((totalSeconds % 3600) / 60);
 	const remainder = totalSeconds % 60;
 
-	if (hours > 0) {
-		return `${pad(hours)}:${pad(minutes)}:${pad(remainder)}`;
-	}
-
-	return `${pad(minutes)}:${pad(remainder)}`;
+	return `${pad(hours)}:${pad(minutes)}:${pad(remainder)}`;
 }
 
 function pad(value: number): string {

@@ -59,6 +59,12 @@ export default class PocketSyncPlugin extends Plugin {
 				...(loadedData?.state?.records ?? {}),
 			},
 		};
+
+		if (this.syncState.lastSyncStatus === "running") {
+			this.syncState.lastSyncStatus = "error";
+			this.syncState.lastSyncMessage = "Previous Pocket sync was interrupted. Run sync again to retry.";
+			this.syncState.consecutiveFailures += 1;
+		}
 	}
 
 	async savePluginData(): Promise<void> {
@@ -80,20 +86,29 @@ export default class PocketSyncPlugin extends Plugin {
 
 	async runSync(options: SyncOptions): Promise<SyncReport> {
 		new Notice("Pocket sync started. This may take a few minutes.", 4000);
-		const report = await this.syncService.runSync(options);
-		if (report.errors.length > 0) {
-			new Notice(report.errors[0] ?? "Pocket sync failed.", 8000);
-		} else {
-			new Notice(
-				report.dryRun
-					? `Pocket sync dry run complete: ${report.created} create, ${report.updated} update, ${report.archived} archive.`
-					: `Pocket sync complete: ${report.created} created, ${report.updated} updated, ${report.archived} archived.`,
-				5000,
-			);
-		}
-		this.refreshAutoSyncRegistration();
 		this.settingTab?.display();
-		return report;
+		const refreshIntervalId = window.setInterval(() => {
+			this.settingTab?.display();
+		}, 2000);
+
+		try {
+			const report = await this.syncService.runSync(options);
+			if (report.errors.length > 0) {
+				new Notice(report.errors[0] ?? "Pocket sync failed.", 8000);
+			} else {
+				new Notice(
+					report.dryRun
+						? `Pocket sync dry run complete: ${report.created} create, ${report.updated} update, ${report.archived} archive.`
+						: `Pocket sync complete: ${report.created} created, ${report.updated} updated, ${report.archived} archived.`,
+					5000,
+				);
+			}
+			return report;
+		} finally {
+			window.clearInterval(refreshIntervalId);
+			this.refreshAutoSyncRegistration();
+			this.settingTab?.display();
+		}
 	}
 
 	async testPocketConnection(): Promise<void> {

@@ -2,7 +2,7 @@ import type { NormalizedPocketRecording, PocketSyncSettings, RenderedPocketNote 
 import { formatLocalDate } from "../utils/date";
 import { buildInlineTagLine, buildMetadataSection, buildPocketFrontmatter, buildSummarySection, buildTranscriptSection } from "./renderShared";
 
-export function renderDailyHighlightsNote(
+export function renderInsightNote(
 	recordings: NormalizedPocketRecording[],
 	settings: PocketSyncSettings,
 	syncedAt: string,
@@ -10,9 +10,9 @@ export function renderDailyHighlightsNote(
 	const first = recordings[0];
 	const titleDate = first ? formatLocalDate(first.recordingAt) : formatLocalDate(new Date().toISOString());
 	const title =
-		settings.dailyHighlightMode === "per-day"
-			? `${titleDate} Daily highlights`
-			: first?.title ?? "Daily highlights";
+		settings.insightMode === "per-day"
+			? `${titleDate} Insights`
+			: first?.title ?? "Insights";
 
 	const sections: string[] = [`# ${title}`];
 	const inlineTags = buildInlineTagLine(recordings, settings);
@@ -39,14 +39,14 @@ export function renderDailyHighlightsNote(
 		}
 
 		if (!summarySection && !transcriptSection) {
-			recordingSections.push("_Pocket has not generated this daily highlight yet._");
+			recordingSections.push("_Pocket has not generated this insight yet._");
 		}
 
 		sections.push(recordingSections.join("\n\n"));
 	}
 
 	if (recordings.length === 0) {
-		sections.push("_No daily highlights were available for this note._");
+		sections.push("_No insights were available for this note._");
 	}
 
 	return {
@@ -55,4 +55,3 @@ export function renderDailyHighlightsNote(
 		frontmatter: buildPocketFrontmatter(recordings, settings, syncedAt),
 	};
 }
-

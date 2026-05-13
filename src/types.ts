@@ -1,20 +1,22 @@
 import {
 	DEFAULT_BASE_FOLDER,
 	DEFAULT_CONVERSATION_FOLDER,
-	DEFAULT_DAILY_HIGHLIGHTS_FOLDER,
-	DEFAULT_DAILY_HIGHLIGHTS_TAG,
+	DEFAULT_INSIGHTS_FOLDER,
+	DEFAULT_INSIGHTS_TAG,
 	DEFAULT_SYNC_INTERVAL_MINUTES,
 } from "./constants";
 
-export type SyncScope = "all" | "conversations" | "daily-highlights";
-export type NoteKind = "conversation" | "daily-highlight";
+export type SyncScope = "all" | "conversations" | "insights";
+export type NoteKind = "conversation" | "insight";
+export type ConversationArtifactKind = "transcript" | "summary" | "action-items" | "mindmap";
+export type NoteArtifactKind = ConversationArtifactKind | "insight";
 export type SyncStatus = "idle" | "running" | "success" | "error";
 export type SectionOrder = "summary-first" | "transcript-first";
 export type NoteManagementMode = "managed-block" | "entire-note";
 export type DuplicateFilenamePolicy = "append-id" | "frontmatter";
 export type DeletedRecordingBehavior = "archive" | "leave";
-export type DailyHighlightMode = "per-recording" | "per-day";
-export type HighlightDateSource = "recording-date" | "summary-date";
+export type InsightMode = "per-recording" | "per-day";
+export type InsightDateSource = "recording-date" | "summary-date";
 export type SyncReason =
 	| "manual"
 	| "startup"
@@ -28,10 +30,10 @@ export interface PocketSyncSettings {
 	apiKey: string;
 	verboseSyncLogging: boolean;
 	syncConversations: boolean;
-	syncDailyHighlights: boolean;
+	syncInsights: boolean;
 	includeTags: string;
 	excludeTags: string;
-	dailyHighlightsTag: string;
+	insightsTag: string;
 	maxDaysPerSyncRun: number;
 	onlyImportCompletedSummaries: boolean;
 	resyncUpdatedSummaries: boolean;
@@ -42,10 +44,10 @@ export interface PocketSyncSettings {
 	pauseAutoSyncAfterFailures: boolean;
 	baseFolder: string;
 	conversationFolder: string;
-	dailyHighlightsFolder: string;
+	insightsFolder: string;
 	groupByYearMonth: boolean;
-	conversationFilenameTemplate: string;
-	dailyHighlightFilenameTemplate: string;
+	conversationFolderTemplate: string;
+	insightFilenameTemplate: string;
 	duplicateFilenamePolicy: DuplicateFilenamePolicy;
 	normalizeFileNames: boolean;
 	includeFrontmatter: boolean;
@@ -53,6 +55,7 @@ export interface PocketSyncSettings {
 	includeSummaryMarkdown: boolean;
 	includeBulletHighlights: boolean;
 	includeActionItems: boolean;
+	includeMindMap: boolean;
 	renderActionItemsAsChecklist: boolean;
 	includeTranscript: boolean;
 	includeTranscriptTimestamps: boolean;
@@ -63,8 +66,8 @@ export interface PocketSyncSettings {
 	noteManagementMode: NoteManagementMode;
 	updateExistingNotes: boolean;
 	deletedRecordingBehavior: DeletedRecordingBehavior;
-	dailyHighlightMode: DailyHighlightMode;
-	highlightDateSource: HighlightDateSource;
+	insightMode: InsightMode;
+	insightDateSource: InsightDateSource;
 	includeActionItemDueDate: boolean;
 	includeActionItemStatus: boolean;
 	hideCompletedActionItems: boolean;
@@ -140,6 +143,7 @@ export interface PocketSummary {
 	markdown: string;
 	bulletPoints: string[];
 	actionItems: PocketActionItem[];
+	mindMap: unknown;
 	autoInitiated: boolean;
 	createdAt: string | null;
 	updatedAt: string | null;
@@ -166,6 +170,7 @@ export interface PocketTrackedRecord {
 	id: string;
 	kind: NoteKind;
 	notePath: string;
+	artifactPaths: string[];
 	groupKey: string;
 	recordingAt: string;
 	lastSeenAt: string;
@@ -243,6 +248,7 @@ export interface RenderedPocketNote {
 
 export interface SyncNoteSpec {
 	kind: NoteKind;
+	artifactKind: NoteArtifactKind;
 	targetPath: string;
 	previousPath: string | null;
 	groupKey: string;
@@ -254,10 +260,10 @@ export const DEFAULT_SETTINGS: PocketSyncSettings = {
 	apiKey: "",
 	verboseSyncLogging: false,
 	syncConversations: true,
-	syncDailyHighlights: true,
+	syncInsights: true,
 	includeTags: "",
 	excludeTags: "",
-	dailyHighlightsTag: DEFAULT_DAILY_HIGHLIGHTS_TAG,
+	insightsTag: DEFAULT_INSIGHTS_TAG,
 	maxDaysPerSyncRun: 30,
 	onlyImportCompletedSummaries: true,
 	resyncUpdatedSummaries: true,
@@ -268,17 +274,18 @@ export const DEFAULT_SETTINGS: PocketSyncSettings = {
 	pauseAutoSyncAfterFailures: true,
 	baseFolder: DEFAULT_BASE_FOLDER,
 	conversationFolder: DEFAULT_CONVERSATION_FOLDER,
-	dailyHighlightsFolder: DEFAULT_DAILY_HIGHLIGHTS_FOLDER,
+	insightsFolder: DEFAULT_INSIGHTS_FOLDER,
 	groupByYearMonth: false,
-	conversationFilenameTemplate: "{{date}} {{title}}",
-	dailyHighlightFilenameTemplate: "{{date}} Daily highlights",
+	conversationFolderTemplate: "{{title}}",
+	insightFilenameTemplate: "{{date}} {{title}}",
 	duplicateFilenamePolicy: "append-id",
 	normalizeFileNames: true,
-	includeFrontmatter: true,
-	includeMetadataSection: true,
+	includeFrontmatter: false,
+	includeMetadataSection: false,
 	includeSummaryMarkdown: true,
 	includeBulletHighlights: true,
 	includeActionItems: true,
+	includeMindMap: true,
 	renderActionItemsAsChecklist: true,
 	includeTranscript: true,
 	includeTranscriptTimestamps: true,
@@ -286,11 +293,11 @@ export const DEFAULT_SETTINGS: PocketSyncSettings = {
 	includeInlineObsidianTags: false,
 	includeExtendedFrontmatterMetadata: true,
 	sectionOrder: "summary-first",
-	noteManagementMode: "managed-block",
+	noteManagementMode: "entire-note",
 	updateExistingNotes: true,
 	deletedRecordingBehavior: "archive",
-	dailyHighlightMode: "per-recording",
-	highlightDateSource: "recording-date",
+	insightMode: "per-recording",
+	insightDateSource: "recording-date",
 	includeActionItemDueDate: true,
 	includeActionItemStatus: true,
 	hideCompletedActionItems: false,

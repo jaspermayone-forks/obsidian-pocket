@@ -26,11 +26,11 @@ export function registerCommands(plugin: PocketSyncPlugin): void {
 	});
 
 	plugin.addCommand({
-		id: "sync-pocket-daily-highlights-now",
-		name: "Sync daily highlights now",
+		id: "sync-pocket-insights-now",
+		name: "Sync insights now",
 		callback: () => {
 			void plugin.runSync({
-				scope: "daily-highlights",
+				scope: "insights",
 				reason: "manual",
 			});
 		},

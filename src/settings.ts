@@ -1,8 +1,8 @@
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { App, ButtonComponent, PluginSettingTab, Setting } from "obsidian";
 
 import { POCKET_API_KEYS_URL, SUPPORTED_FILENAME_TOKENS } from "./constants";
 import type PocketSyncPlugin from "./main";
-import type { DailyHighlightMode, PocketSyncSettings } from "./types";
+import type { InsightMode, PocketSyncSettings } from "./types";
 import { DEFAULT_SETTINGS } from "./types";
 import { formatDisplayDateTime } from "./utils/date";
 import { normalizeFolderPath } from "./utils/text";
@@ -14,20 +14,20 @@ export function sanitizeSettings(settings: Partial<PocketSyncSettings>): PocketS
 		apiKey: settings.apiKey?.trim() ?? DEFAULT_SETTINGS.apiKey,
 		includeTags: settings.includeTags?.trim() ?? DEFAULT_SETTINGS.includeTags,
 		excludeTags: settings.excludeTags?.trim() ?? DEFAULT_SETTINGS.excludeTags,
-		dailyHighlightsTag: settings.dailyHighlightsTag?.trim() || DEFAULT_SETTINGS.dailyHighlightsTag,
+		insightsTag: settings.insightsTag?.trim() || DEFAULT_SETTINGS.insightsTag,
 		maxDaysPerSyncRun: clampNumber(settings.maxDaysPerSyncRun, 1, 365, DEFAULT_SETTINGS.maxDaysPerSyncRun),
 		syncIntervalMinutes: clampNumber(settings.syncIntervalMinutes, 5, 1440, DEFAULT_SETTINGS.syncIntervalMinutes),
 		baseFolder: normalizeFolderPath(settings.baseFolder ?? DEFAULT_SETTINGS.baseFolder) || DEFAULT_SETTINGS.baseFolder,
 		conversationFolder:
 			normalizeFolderPath(settings.conversationFolder ?? DEFAULT_SETTINGS.conversationFolder) ||
 			DEFAULT_SETTINGS.conversationFolder,
-		dailyHighlightsFolder:
-			normalizeFolderPath(settings.dailyHighlightsFolder ?? DEFAULT_SETTINGS.dailyHighlightsFolder) ||
-			DEFAULT_SETTINGS.dailyHighlightsFolder,
-		conversationFilenameTemplate:
-			settings.conversationFilenameTemplate?.trim() || DEFAULT_SETTINGS.conversationFilenameTemplate,
-		dailyHighlightFilenameTemplate:
-			settings.dailyHighlightFilenameTemplate?.trim() || DEFAULT_SETTINGS.dailyHighlightFilenameTemplate,
+		insightsFolder:
+			normalizeFolderPath(settings.insightsFolder ?? DEFAULT_SETTINGS.insightsFolder) ||
+			DEFAULT_SETTINGS.insightsFolder,
+		conversationFolderTemplate:
+			settings.conversationFolderTemplate?.trim() || DEFAULT_SETTINGS.conversationFolderTemplate,
+		insightFilenameTemplate:
+			settings.insightFilenameTemplate?.trim() || DEFAULT_SETTINGS.insightFilenameTemplate,
 	};
 }
 
@@ -42,7 +42,7 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl).setName("Overview").setHeading();
 		const overviewParagraph = containerEl.createEl("p");
-		overviewParagraph.appendText("Sync your recordings, summaries, action items, and daily highlights into markdown notes. ");
+		overviewParagraph.appendText("Sync your conversations, summaries, action items, mind maps, and insights into markdown notes. ");
 		overviewParagraph.appendText("Imported notes contain copies of your Pocket data, and the API key is stored in Obsidian's local plugin data without encryption.");
 
 		this.renderStatusSection(containerEl);
@@ -69,37 +69,35 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 
 	private renderSetupActions(containerEl: HTMLElement): void {
 		this.addSectionHeading(containerEl, "Quick actions");
-		new Setting(containerEl)
-			.addButton((button) =>
-				button.setButtonText("Open key page").onClick(() => {
-					window.open(POCKET_API_KEYS_URL, "_blank");
-				}),
-			)
-			.addButton((button) =>
-				button.setButtonText("Test connection").setCta().onClick(() => {
-					void this.plugin.testPocketConnection();
-				}),
-			)
-			.addButton((button) =>
-				button.setButtonText("Sync now").onClick(() => {
-					void this.plugin.runSync({
-						scope: "all",
-						reason: "manual",
-					});
-				}),
-			)
-			.addButton((button) =>
-				button.setButtonText("Open report").onClick(() => {
-					this.plugin.openLastSyncReport();
-				}),
-			);
+		const isRunning = this.plugin.syncState.lastSyncStatus === "running";
+		const actionsEl = containerEl.createDiv({ cls: "pocket-sync-quick-actions" });
+		new ButtonComponent(actionsEl)
+			.setButtonText("Get API key")
+			.onClick(() => {
+				window.open(POCKET_API_KEYS_URL, "_blank");
+			});
+		new ButtonComponent(actionsEl)
+			.setButtonText("Test connection")
+			.onClick(() => {
+				void this.plugin.testPocketConnection();
+			});
+		new ButtonComponent(actionsEl)
+			.setButtonText(isRunning ? "Sync running..." : "Sync now")
+			.setCta()
+			.setDisabled(isRunning)
+			.onClick(() => {
+				void this.plugin.runSync({
+					scope: "all",
+					reason: "manual",
+				});
+			});
 	}
 
 	private renderAuthenticationSection(containerEl: HTMLElement): void {
 		this.addSectionHeading(containerEl, "Authentication and privacy");
 		new Setting(containerEl)
-			.setName("Pocket access key")
-			.setDesc("Use your access key for direct sync.")
+			.setName("API key")
+			.setDesc("Use your API key for direct sync.")
 			.addText((text) => {
 				text.setValue(this.plugin.settings.apiKey);
 				text.inputEl.type = "password";
@@ -122,7 +120,7 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 		this.addSectionHeading(containerEl, "Sync scope");
 		new Setting(containerEl)
 			.setName("Sync conversations")
-			.setDesc("Import standard Pocket recordings with summaries, action items, and optional transcripts.")
+			.setDesc("Import standard Pocket recordings into drive-style folders with transcript, summary, action item, and mind map files.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.syncConversations).onChange(async (value) => {
 					await this.plugin.updateSettings({ syncConversations: value });
@@ -130,11 +128,11 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Sync daily highlights")
-			.setDesc("Import Pocket daily highlights recordings, which are usually summary-only.")
+			.setName("Sync insights")
+			.setDesc("Import Pocket insights into single notes under the insights folder.")
 			.addToggle((toggle) =>
-				toggle.setValue(this.plugin.settings.syncDailyHighlights).onChange(async (value) => {
-					await this.plugin.updateSettings({ syncDailyHighlights: value });
+				toggle.setValue(this.plugin.settings.syncInsights).onChange(async (value) => {
+					await this.plugin.updateSettings({ syncInsights: value });
 				}),
 			);
 
@@ -159,26 +157,26 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName("Daily highlights tag")
-			.setDesc("Pocket tag name that identifies daily highlights recordings.")
+			.setName("Insights tag")
+			.setDesc("Pocket tag name that identifies insight recordings.")
 			.addText((text) => {
-				text.setValue(this.plugin.settings.dailyHighlightsTag);
+				text.setValue(this.plugin.settings.insightsTag);
 				text.onChange(async (value) => {
-					await this.plugin.updateSettings({ dailyHighlightsTag: value });
+					await this.plugin.updateSettings({ insightsTag: value });
 				});
 			});
 
 		this.addNumberSetting(
 			containerEl,
 			"Max days per sync run",
-			"Guardrail that limits how much history one sync can scan.",
+			"Limits incremental sync and manual backfill windows after the first sync. The first sync imports all Pocket history since October 5, 2025.",
 			this.plugin.settings.maxDaysPerSyncRun,
 			async (value) => this.plugin.updateSettings({ maxDaysPerSyncRun: value }),
 		);
 
 		new Setting(containerEl)
 			.setName("Only import completed summaries")
-			.setDesc("Skip recordings whose summary package is still pending.")
+			.setDesc("Skip recordings whose summary package is still pending. Conversations without completed summaries do not create artifact folders.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.onlyImportCompletedSummaries).onChange(async (value) => {
 					await this.plugin.updateSettings({ onlyImportCompletedSummaries: value });
@@ -187,7 +185,7 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Re-sync updated summaries")
-			.setDesc("Update notes when summaries change.")
+			.setDesc("Update generated files when Pocket content changes upstream.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.resyncUpdatedSummaries).onChange(async (value) => {
 					await this.plugin.updateSettings({ resyncUpdatedSummaries: value });
@@ -196,7 +194,7 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Import transcript when available")
-			.setDesc("Request transcript data when it is available.")
+			.setDesc("Request transcript data so conversations can write `transcript.md`.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.importTranscriptWhenAvailable).onChange(async (value) => {
 					await this.plugin.updateSettings({ importTranscriptWhenAvailable: value });
@@ -268,19 +266,19 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName("Daily highlights folder")
-			.setDesc("Folder under the base Pocket folder for daily highlight notes.")
+			.setName("Insights folder")
+			.setDesc("Folder under the base Pocket folder for insight notes.")
 			.addText((text) => {
-				text.setPlaceholder("Daily highlights");
-				text.setValue(this.plugin.settings.dailyHighlightsFolder);
+				text.setPlaceholder("Insights");
+				text.setValue(this.plugin.settings.insightsFolder);
 				text.onChange(async (value) => {
-					await this.plugin.updateSettings({ dailyHighlightsFolder: value });
+					await this.plugin.updateSettings({ insightsFolder: value });
 				});
 			});
 
 		new Setting(containerEl)
 			.setName("Group by year and month")
-			.setDesc("Add `YYYY/MM` subfolders beneath the conversation and daily highlight folders.")
+			.setDesc("Add `YYYY/MM` subfolders beneath the conversation and insight folders. Leave off for closest OneDrive parity.")
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.settings.groupByYearMonth).onChange(async (value) => {
 					await this.plugin.updateSettings({ groupByYearMonth: value });
@@ -288,30 +286,30 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Conversation filename template")
-			.setDesc(`Supported tokens: ${SUPPORTED_FILENAME_TOKENS.join(", ")}`)
+			.setName("Conversation folder template")
+			.setDesc(`Names the folder that contains transcript.md, summary.md, action-items.md, and mindmap.md. Supported tokens: ${SUPPORTED_FILENAME_TOKENS.join(", ")}`)
 			.addText((text) => {
-				text.setPlaceholder("{{date}} {{title}}");
-				text.setValue(this.plugin.settings.conversationFilenameTemplate);
+				text.setPlaceholder("{{title}}");
+				text.setValue(this.plugin.settings.conversationFolderTemplate);
 				text.onChange(async (value) => {
-					await this.plugin.updateSettings({ conversationFilenameTemplate: value });
+					await this.plugin.updateSettings({ conversationFolderTemplate: value });
 				});
 			});
 
 		new Setting(containerEl)
-			.setName("Daily highlight filename template")
-			.setDesc(`Supported tokens: ${SUPPORTED_FILENAME_TOKENS.join(", ")}`)
+			.setName("Insight filename template")
+			.setDesc(`Names the single insight note under the Insights folder. Supported tokens: ${SUPPORTED_FILENAME_TOKENS.join(", ")}`)
 			.addText((text) => {
-				text.setPlaceholder("{{date}} Daily highlights");
-				text.setValue(this.plugin.settings.dailyHighlightFilenameTemplate);
+				text.setPlaceholder("{{date}} {{title}}");
+				text.setValue(this.plugin.settings.insightFilenameTemplate);
 				text.onChange(async (value) => {
-					await this.plugin.updateSettings({ dailyHighlightFilenameTemplate: value });
+					await this.plugin.updateSettings({ insightFilenameTemplate: value });
 				});
 			});
 
 		new Setting(containerEl)
 			.setName("Duplicate filename policy")
-			.setDesc("Keep the tracked note path on collisions.")
+			.setDesc("Choose how to avoid collisions when two recordings produce the same folder or note name.")
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("append-id", "Add suffix")
@@ -332,53 +330,56 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 			);
 
 		new Setting(containerEl)
-			.setName("Daily highlights mode")
-			.setDesc("Create one note per daily highlight recording, or roll multiple highlights into one note per day.")
+			.setName("Insights mode")
+			.setDesc("Create one note per insight recording, or roll multiple insights into one note per day.")
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("per-recording", "One note per recording")
 					.addOption("per-day", "Roll up to one note per day")
-					.setValue(this.plugin.settings.dailyHighlightMode)
-					.onChange(async (value: DailyHighlightMode) => {
-						await this.plugin.updateSettings({ dailyHighlightMode: value });
+					.setValue(this.plugin.settings.insightMode)
+					.onChange(async (value: InsightMode) => {
+						await this.plugin.updateSettings({ insightMode: value });
 					}),
 			);
 
 		new Setting(containerEl)
-			.setName("Highlight date source")
-			.setDesc("Use the recording date or the summary update date when naming daily highlights.")
+			.setName("Insight date source")
+			.setDesc("Use the recording date or the summary update date when naming insights.")
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("recording-date", "Recording date")
 					.addOption("summary-date", "Summary date")
-					.setValue(this.plugin.settings.highlightDateSource)
-					.onChange(async (value: PocketSyncSettings["highlightDateSource"]) => {
-						await this.plugin.updateSettings({ highlightDateSource: value });
+					.setValue(this.plugin.settings.insightDateSource)
+					.onChange(async (value: PocketSyncSettings["insightDateSource"]) => {
+						await this.plugin.updateSettings({ insightDateSource: value });
 					}),
 			);
 	}
 
 	private renderContentSection(containerEl: HTMLElement): void {
 		this.addSectionHeading(containerEl, "Note content");
-		this.addToggleSetting(containerEl, "Include frontmatter", "Store Pocket metadata as normal Obsidian properties.", this.plugin.settings.includeFrontmatter, async (value) =>
+		this.addToggleSetting(containerEl, "Include frontmatter", "Store Pocket metadata as Obsidian properties. Turn off for the closest raw Drive-style file bodies.", this.plugin.settings.includeFrontmatter, async (value) =>
 			this.plugin.updateSettings({ includeFrontmatter: value }),
 		);
-		this.addToggleSetting(containerEl, "Include Pocket metadata section", "Render a Markdown section with timestamps, duration, status, and tags.", this.plugin.settings.includeMetadataSection, async (value) =>
+		this.addToggleSetting(containerEl, "Include Pocket metadata section", "Add a Markdown metadata section to insight notes.", this.plugin.settings.includeMetadataSection, async (value) =>
 			this.plugin.updateSettings({ includeMetadataSection: value }),
 		);
-		this.addToggleSetting(containerEl, "Include summary markdown", "Render Pocket's summary markdown block.", this.plugin.settings.includeSummaryMarkdown, async (value) =>
+		this.addToggleSetting(containerEl, "Write summary.md", "Write Pocket's summary markdown into each conversation folder and insight note.", this.plugin.settings.includeSummaryMarkdown, async (value) =>
 			this.plugin.updateSettings({ includeSummaryMarkdown: value }),
 		);
-		this.addToggleSetting(containerEl, "Include bullet highlights", "Render Pocket summary bullet points when available.", this.plugin.settings.includeBulletHighlights, async (value) =>
+		this.addToggleSetting(containerEl, "Include bullet highlights", "Append Pocket summary bullet points to summary output when available.", this.plugin.settings.includeBulletHighlights, async (value) =>
 			this.plugin.updateSettings({ includeBulletHighlights: value }),
 		);
-		this.addToggleSetting(containerEl, "Include action items", "Render Pocket action items into each note.", this.plugin.settings.includeActionItems, async (value) =>
+		this.addToggleSetting(containerEl, "Write action-items.md", "Write Pocket action items into each conversation folder.", this.plugin.settings.includeActionItems, async (value) =>
 			this.plugin.updateSettings({ includeActionItems: value }),
+		);
+		this.addToggleSetting(containerEl, "Write mindmap.md", "Write Pocket mind map markdown into each conversation folder when available.", this.plugin.settings.includeMindMap, async (value) =>
+			this.plugin.updateSettings({ includeMindMap: value }),
 		);
 		this.addToggleSetting(containerEl, "Render action items as checklist", "Use Markdown checkboxes instead of plain bullets.", this.plugin.settings.renderActionItemsAsChecklist, async (value) =>
 			this.plugin.updateSettings({ renderActionItemsAsChecklist: value }),
 		);
-		this.addToggleSetting(containerEl, "Include transcript", "Render transcript content when Pocket provides it.", this.plugin.settings.includeTranscript, async (value) =>
+		this.addToggleSetting(containerEl, "Write transcript.md", "Write transcript content into each conversation folder when Pocket provides it.", this.plugin.settings.includeTranscript, async (value) =>
 			this.plugin.updateSettings({ includeTranscript: value }),
 		);
 		this.addToggleSetting(containerEl, "Include transcript timestamps", "Prefix transcript segments with Pocket timestamps.", this.plugin.settings.includeTranscriptTimestamps, async (value) =>
@@ -406,25 +407,13 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 			this.plugin.updateSettings({ hideCompletedActionItems: value }),
 		);
 
-		new Setting(containerEl)
-			.setName("Section order")
-			.setDesc("Choose whether summaries or transcripts appear first in conversation notes.")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("summary-first", "Summary first")
-					.addOption("transcript-first", "Transcript first")
-					.setValue(this.plugin.settings.sectionOrder)
-					.onChange(async (value: PocketSyncSettings["sectionOrder"]) => {
-						await this.plugin.updateSettings({ sectionOrder: value });
-					}),
-			);
 	}
 
 	private renderWriteBehaviorSection(containerEl: HTMLElement): void {
 		this.addSectionHeading(containerEl, "Write behavior");
 		new Setting(containerEl)
 			.setName("Note management mode")
-			.setDesc("Managed block mode preserves manual note content outside the sync block.")
+			.setDesc("Entire note managed is closest to drive sync. Managed block mode preserves manual content outside the sync block.")
 			.addDropdown((dropdown) =>
 				dropdown
 					.addOption("managed-block", "Managed sync block only")

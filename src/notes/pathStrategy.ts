@@ -2,8 +2,9 @@ import { normalizePath, Vault } from "obsidian";
 
 import { DEFAULT_ARCHIVE_FOLDER } from "../constants";
 import type {
-	DailyHighlightMode,
-	HighlightDateSource,
+	ConversationArtifactKind,
+	InsightDateSource,
+	InsightMode,
 	NormalizedPocketRecording,
 	PocketSyncSettings,
 	PocketTrackedRecord,
@@ -11,23 +12,37 @@ import type {
 import { formatLocalDate, formatLocalYearMonth } from "../utils/date";
 import { normalizeFolderPath, sanitizeFileComponent, truncate } from "../utils/text";
 
-export function buildConversationPath(
+export const CONVERSATION_ARTIFACT_FILENAMES: Record<ConversationArtifactKind, string> = {
+	transcript: "transcript.md",
+	summary: "summary.md",
+	"action-items": "action-items.md",
+	mindmap: "mindmap.md",
+};
+
+export function buildConversationArtifactPath(
 	vault: Vault,
 	recording: NormalizedPocketRecording,
 	settings: PocketSyncSettings,
+	artifactKind: ConversationArtifactKind,
 	trackedRecord: PocketTrackedRecord | null,
 ): string {
-	const desiredPath = buildPathFromTemplate(
-		recording,
-		settings,
-		settings.conversationFolder,
-		settings.conversationFilenameTemplate,
-	);
-
-	return resolveTrackedOrUniquePath(vault, desiredPath, recording.id, settings, trackedRecord);
+	const folderPath = resolveConversationFolderPath(vault, recording, settings, trackedRecord);
+	return normalizePath(`${folderPath}/${CONVERSATION_ARTIFACT_FILENAMES[artifactKind]}`);
 }
 
-export function buildDailyHighlightPath(
+export function findTrackedArtifactPath(trackedRecord: PocketTrackedRecord | null, artifactKind: ConversationArtifactKind): string | null {
+	if (!trackedRecord) {
+		return null;
+	}
+
+	const fileName = CONVERSATION_ARTIFACT_FILENAMES[artifactKind];
+	return (
+		trackedRecord.artifactPaths.find((path) => path.endsWith(`/${fileName}`)) ??
+		(trackedRecord.notePath.endsWith(`/${fileName}`) ? trackedRecord.notePath : null)
+	);
+}
+
+export function buildInsightPath(
 	vault: Vault,
 	recordings: NormalizedPocketRecording[],
 	settings: PocketSyncSettings,
@@ -35,19 +50,19 @@ export function buildDailyHighlightPath(
 ): string {
 	const representative = recordings[0];
 	if (!representative) {
-		return normalizePath(`${settings.baseFolder}/${settings.dailyHighlightsFolder}/Daily highlights.md`);
+		return normalizePath(`${settings.baseFolder}/${settings.insightsFolder}/Insights.md`);
 	}
 
-	const targetDate = getHighlightDate(recordings, settings.dailyHighlightMode, settings.highlightDateSource);
+	const targetDate = getInsightDate(recordings, settings.insightMode, settings.insightDateSource);
 	const titleSeed =
-		settings.dailyHighlightMode === "per-day"
-			? "Daily highlights"
+		settings.insightMode === "per-day"
+			? "Insights"
 			: representative.title;
 	const desiredPath = buildPathFromTemplate(
 		representative,
 		settings,
-		settings.dailyHighlightsFolder,
-		settings.dailyHighlightFilenameTemplate,
+		settings.insightsFolder,
+		settings.insightFilenameTemplate,
 		targetDate,
 		titleSeed,
 	);
@@ -67,16 +82,59 @@ export function buildArchivePath(notePath: string, settings: PocketSyncSettings)
 	return normalizePath(`${archiveBase}/${fileName}`);
 }
 
-export function buildDailyHighlightGroupKey(
+export function buildInsightGroupKey(
 	recording: NormalizedPocketRecording,
-	mode: DailyHighlightMode,
-	dateSource: HighlightDateSource,
+	mode: InsightMode,
+	dateSource: InsightDateSource,
 ): string {
 	if (mode === "per-recording") {
 		return recording.id;
 	}
 
-	return getHighlightDate([recording], mode, dateSource);
+	return getInsightDate([recording], mode, dateSource);
+}
+
+function resolveConversationFolderPath(
+	vault: Vault,
+	recording: NormalizedPocketRecording,
+	settings: PocketSyncSettings,
+	trackedRecord: PocketTrackedRecord | null,
+): string {
+	if (trackedRecord?.notePath) {
+		return normalizePath(trackedRecord.notePath.split("/").slice(0, -1).join("/"));
+	}
+
+	const desiredFolderPath = buildConversationFolderPath(recording, settings);
+	if (!vault.getAbstractFileByPath(desiredFolderPath)) {
+		return desiredFolderPath;
+	}
+
+	if (settings.duplicateFilenamePolicy === "frontmatter") {
+		return desiredFolderPath;
+	}
+
+	return `${desiredFolderPath} ${recording.id.slice(0, 8)}`;
+}
+
+function buildConversationFolderPath(recording: NormalizedPocketRecording, settings: PocketSyncSettings): string {
+	const baseFolder = normalizeFolderPath(settings.baseFolder);
+	const featureFolder = normalizeFolderPath(settings.conversationFolder);
+	const dateFolder = getRecordingDatePrefix(recording);
+	const folderName = buildTemplateValue(
+		recording,
+		settings,
+		settings.conversationFolderTemplate,
+		dateFolder,
+		recording.title,
+	);
+	let folderPath = normalizeFolderPath(`${baseFolder}/${featureFolder}/${dateFolder}/${folderName}`);
+
+	if (settings.groupByYearMonth) {
+		const yearMonth = formatLocalYearMonth(recording.recordingAt);
+		folderPath = normalizeFolderPath(`${baseFolder}/${featureFolder}/${yearMonth.year}/${yearMonth.month}/${dateFolder}/${folderName}`);
+	}
+
+	return normalizePath(folderPath);
 }
 
 function buildPathFromTemplate(
@@ -90,8 +148,25 @@ function buildPathFromTemplate(
 	const baseFolder = normalizeFolderPath(settings.baseFolder);
 	const featureFolder = normalizeFolderPath(folderSetting);
 	const noteDate = explicitDate ?? formatLocalDate(recording.recordingAt);
+	const finalFileName = truncate(buildTemplateValue(recording, settings, template, noteDate, explicitTitle ?? recording.title), 120);
+	let folderPath = normalizeFolderPath(`${baseFolder}/${featureFolder}`);
+
+	if (settings.groupByYearMonth) {
+		const yearMonth = formatLocalYearMonth(recording.recordingAt);
+		folderPath = normalizeFolderPath(`${folderPath}/${yearMonth.year}/${yearMonth.month}`);
+	}
+
+	return normalizePath(`${folderPath}/${finalFileName}.md`);
+}
+
+function buildTemplateValue(
+	recording: NormalizedPocketRecording,
+	settings: PocketSyncSettings,
+	template: string,
+	noteDate: string,
+	title: string,
+): string {
 	const dateParts = noteDate.split("-");
-	const title = explicitTitle ?? recording.title;
 	const safeTitle = settings.normalizeFileNames ? sanitizeFileComponent(title) : title;
 	const safeDate = settings.normalizeFileNames ? sanitizeFileComponent(noteDate) : noteDate;
 	const replacements: Record<string, string> = {
@@ -106,15 +181,7 @@ function buildPathFromTemplate(
 		return currentTemplate.split(token).join(replacement);
 	}, template);
 
-	const finalFileName = truncate(sanitizeFileComponent(resolvedTemplate), 120);
-	let folderPath = normalizeFolderPath(`${baseFolder}/${featureFolder}`);
-
-	if (settings.groupByYearMonth) {
-		const yearMonth = formatLocalYearMonth(recording.recordingAt);
-		folderPath = normalizeFolderPath(`${folderPath}/${yearMonth.year}/${yearMonth.month}`);
-	}
-
-	return normalizePath(`${folderPath}/${finalFileName}.md`);
+	return sanitizeFileComponent(resolvedTemplate);
 }
 
 function resolveTrackedOrUniquePath(
@@ -140,10 +207,10 @@ function resolveTrackedOrUniquePath(
 	return desiredPath.replace(/\.md$/, ` ${suffix}.md`);
 }
 
-function getHighlightDate(
+function getInsightDate(
 	recordings: NormalizedPocketRecording[],
-	mode: DailyHighlightMode,
-	dateSource: HighlightDateSource,
+	mode: InsightMode,
+	dateSource: InsightDateSource,
 ): string {
 	const sourceRecording = recordings[0];
 	if (!sourceRecording) {
@@ -151,13 +218,24 @@ function getHighlightDate(
 	}
 
 	if (mode === "per-day") {
-		return formatLocalDate(sourceRecording.recordingAt);
+		return getRecordingDatePrefix(sourceRecording);
 	}
 
 	if (dateSource === "summary-date" && sourceRecording.summary?.updatedAt) {
 		return formatLocalDate(sourceRecording.summary.updatedAt);
 	}
 
-	return formatLocalDate(sourceRecording.recordingAt);
+	return getRecordingDatePrefix(sourceRecording);
+}
+
+function getRecordingDatePrefix(recording: NormalizedPocketRecording): string {
+	if (recording.kind === "insight") {
+		const match = recording.id.match(/(\d{4}-\d{2}-\d{2})$/);
+		if (match?.[1]) {
+			return match[1];
+		}
+	}
+
+	return formatLocalDate(recording.recordingAt);
 }
 

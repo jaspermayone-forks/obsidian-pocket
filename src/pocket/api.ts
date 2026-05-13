@@ -1,6 +1,6 @@
 import { requestUrl } from "obsidian";
 
-import { DEFAULT_RETRY_COUNT, DEFAULT_RETRY_DELAY_MS, MAX_PAGE_SIZE, POCKET_API_BASE_URL } from "../constants";
+import { DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_RETRY_COUNT, DEFAULT_RETRY_DELAY_MS, MAX_PAGE_SIZE, POCKET_API_BASE_URL } from "../constants";
 import type { PocketSyncSettings } from "../types";
 
 interface PocketApiEnvelope<T> {
@@ -24,6 +24,14 @@ interface ListRecordingsParams {
 	limit?: number;
 }
 
+interface RateLimitState {
+	limit: number | null;
+	remaining: number | null;
+	resetAt: number | null;
+}
+
+type RateLimitWaitHandler = (waitMs: number, details: RateLimitState) => Promise<void> | void;
+
 export class PocketApiError extends Error {
 	status: number | null;
 
@@ -38,13 +46,22 @@ export class PocketApi {
 	private readonly apiKey: string;
 	private readonly retryCount: number;
 	private readonly retryDelayMs: number;
+	private readonly timeoutMs: number;
 	private readonly verbose: boolean;
+	private readonly onRateLimitWait?: RateLimitWaitHandler;
+	private rateLimitState: RateLimitState = {
+		limit: null,
+		remaining: null,
+		resetAt: null,
+	};
 
-	constructor(settings: PocketSyncSettings) {
+	constructor(settings: PocketSyncSettings, onRateLimitWait?: RateLimitWaitHandler) {
 		this.apiKey = settings.apiKey.trim();
 		this.retryCount = DEFAULT_RETRY_COUNT;
 		this.retryDelayMs = DEFAULT_RETRY_DELAY_MS;
+		this.timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
 		this.verbose = settings.verboseSyncLogging;
+		this.onRateLimitWait = onRateLimitWait;
 	}
 
 	async testConnection(): Promise<{ tagCount: number }> {
@@ -122,24 +139,32 @@ export class PocketApi {
 
 		while (true) {
 			try {
-				const response = await requestUrl({
-					url: url.toString(),
-					method: options.method ?? "GET",
-					headers: {
-						Authorization: `Bearer ${this.apiKey}`,
-						Accept: "application/json",
-					},
-					contentType: "application/json",
-					body: options.body,
-					throw: false,
-				});
+				await this.waitForRateLimitResetIfNeeded(path);
+				this.log("Pocket API request started", { path, attempt: attempt + 1 });
+				const response = await withTimeout(
+					requestUrl({
+						url: url.toString(),
+						method: options.method ?? "GET",
+						headers: {
+							Authorization: `Bearer ${this.apiKey}`,
+							Accept: "application/json",
+						},
+						contentType: "application/json",
+						body: options.body,
+						throw: false,
+					}),
+					this.timeoutMs,
+					`Pocket request timed out after ${Math.round(this.timeoutMs / 1000)} seconds: ${path}`,
+				);
 
 				const payload = response.json as PocketApiEnvelope<T>;
+				this.updateRateLimitState(response.headers);
 
 				if (response.status >= 200 && response.status < 300) {
 					this.log("Pocket API request succeeded", {
 						path,
 						status: response.status,
+						rateLimit: this.rateLimitState,
 					});
 					return payload;
 				}
@@ -148,7 +173,17 @@ export class PocketApi {
 					throw new PocketApiError("Pocket rejected the API key. Open settings and test the connection again.", 401);
 				}
 
-				if ((response.status === 429 || response.status >= 500) && attempt < this.retryCount) {
+				if (response.status === 429) {
+					await this.waitForRateLimitReset(path, payload);
+					continue;
+				}
+
+				if (response.status >= 500 && attempt < this.retryCount) {
+					this.log("Pocket API request retrying", {
+						path,
+						status: response.status,
+						attempt: attempt + 1,
+					});
 					attempt += 1;
 					await sleep(this.retryDelayMs * attempt);
 					continue;
@@ -161,6 +196,11 @@ export class PocketApi {
 				}
 
 				if (attempt < this.retryCount) {
+					this.log("Pocket API request failed; retrying", {
+						path,
+						attempt: attempt + 1,
+						error: error instanceof Error ? error.message : "Unknown error",
+					});
 					attempt += 1;
 					await sleep(this.retryDelayMs * attempt);
 					continue;
@@ -179,9 +219,104 @@ export class PocketApi {
 
 		console.debug(`[Pocket Sync] ${message}`, details ?? {});
 	}
+
+	private updateRateLimitState(headers: Record<string, string>): void {
+		const limit = parseIntegerHeader(headers, "X-RateLimit-Limit");
+		const remaining = parseIntegerHeader(headers, "X-RateLimit-Remaining");
+		const resetAtSeconds = parseIntegerHeader(headers, "X-RateLimit-Reset");
+
+		if (limit != null) {
+			this.rateLimitState.limit = limit;
+		}
+
+		if (remaining != null) {
+			this.rateLimitState.remaining = remaining;
+		}
+
+		if (resetAtSeconds != null) {
+			this.rateLimitState.resetAt = resetAtSeconds * 1000;
+		}
+	}
+
+	private async waitForRateLimitResetIfNeeded(path: string): Promise<void> {
+		if (this.rateLimitState.remaining == null || this.rateLimitState.remaining > 0 || this.rateLimitState.resetAt == null) {
+			return;
+		}
+
+		const waitMs = this.rateLimitState.resetAt - Date.now() + 1000;
+		if (waitMs <= 0) {
+			return;
+		}
+
+		this.log("Pocket API rate limit exhausted; waiting for reset", {
+			path,
+			waitMs,
+			rateLimit: this.rateLimitState,
+		});
+		await this.notifyRateLimitWait(waitMs);
+		await sleep(waitMs);
+	}
+
+	private async waitForRateLimitReset(path: string, payload: PocketApiEnvelope<unknown>): Promise<void> {
+		const retryAfterMs = parseRetryAfterMs(payload);
+		const resetWaitMs = this.rateLimitState.resetAt == null ? null : this.rateLimitState.resetAt - Date.now() + 1000;
+		const waitMs = Math.max(retryAfterMs ?? 0, resetWaitMs ?? 0, 1000);
+		this.log("Pocket API returned 429; waiting before retry", {
+			path,
+			waitMs,
+			rateLimit: this.rateLimitState,
+		});
+		await this.notifyRateLimitWait(waitMs);
+		await sleep(waitMs);
+	}
+
+	private async notifyRateLimitWait(waitMs: number): Promise<void> {
+		await this.onRateLimitWait?.(waitMs, { ...this.rateLimitState });
+	}
 }
 
 function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timeoutId = window.setTimeout(() => {
+			reject(new PocketApiError(message, null));
+		}, timeoutMs);
+
+		promise
+			.then((value) => {
+				window.clearTimeout(timeoutId);
+				resolve(value);
+			})
+			.catch((error: unknown) => {
+				window.clearTimeout(timeoutId);
+				reject(error instanceof Error ? error : new PocketApiError("Unknown Pocket request error.", null));
+			});
+	});
+}
+
+function parseIntegerHeader(headers: Record<string, string>, name: string): number | null {
+	const rawValue = headers[name] ?? headers[name.toLowerCase()];
+	if (!rawValue) {
+		return null;
+	}
+
+	const parsed = Number.parseInt(rawValue, 10);
+	return Number.isNaN(parsed) ? null : parsed;
+}
+
+function parseRetryAfterMs(payload: PocketApiEnvelope<unknown>): number | null {
+	const value = asRecord(payload).retryAfter;
+	if (typeof value !== "number") {
+		return null;
+	}
+
+	return Math.max(0, value * 1000);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+	return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
