@@ -44,6 +44,14 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          body: |
+            ## Changes
+            - Sync conversations into Drive-style folders with transcript, summary, action item, and mind map files.
+            - Sync Pocket insights as single notes under the Insights folder.
+            - Add rate-limit-aware public API syncing and GitHub artifact attestations for release assets.
+
+            ## Obsidian review
+            - Raises the minimum Obsidian app version to match the APIs used by the settings UI.
           files: |
             main.js
             manifest.json
