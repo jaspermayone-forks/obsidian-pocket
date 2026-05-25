@@ -18,6 +18,7 @@ const MANAGED_FRONTMATTER_KEYS = [
 	"state",
 	"language",
 	"pocket_tags",
+	"tags",
 	"synced_at",
 ] as const;
 

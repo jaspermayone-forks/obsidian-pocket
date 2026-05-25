@@ -1,4 +1,5 @@
 import type { ConversationArtifactKind, NormalizedPocketRecording, PocketSyncSettings, RenderedPocketNote } from "../types";
+import { parseCommaSeparatedList } from "../utils/text";
 import {
 	buildActionItemsMarkdownBody,
 	buildInlineTagLine,
@@ -11,13 +12,18 @@ import {
 	buildTranscriptSection,
 } from "./renderShared";
 
+function buildConversationCustomTags(settings: PocketSyncSettings): string[] {
+	return parseCommaSeparatedList([settings.additionalTags, settings.additionalConversationTags].join(","));
+}
+
 export function renderConversationNote(
 	recording: NormalizedPocketRecording,
 	settings: PocketSyncSettings,
 	syncedAt: string,
 ): RenderedPocketNote {
+	const customTags = buildConversationCustomTags(settings);
 	const sections: string[] = [];
-	const inlineTags = buildInlineTagLine([recording], settings);
+	const inlineTags = buildInlineTagLine([recording], settings, customTags);
 	const summarySection = buildSummarySection(recording, settings);
 	const transcriptSection = buildTranscriptSection(recording, settings);
 
@@ -55,7 +61,7 @@ export function renderConversationNote(
 	return {
 		title: recording.title,
 		body: sections.filter(Boolean).join("\n\n").trim(),
-		frontmatter: buildPocketFrontmatter([recording], settings, syncedAt),
+		frontmatter: buildPocketFrontmatter([recording], settings, syncedAt, customTags),
 	};
 }
 
@@ -65,13 +71,14 @@ export function renderConversationArtifactNote(
 	syncedAt: string,
 	artifactKind: ConversationArtifactKind,
 ): RenderedPocketNote {
+	const customTags = buildConversationCustomTags(settings);
 	const title = `${recording.title} ${artifactTitle(artifactKind)}`;
 	const body = renderConversationArtifactBody(recording, settings, artifactKind);
 	return {
 		title,
 		body,
 		frontmatter: {
-			...buildPocketFrontmatter([recording], settings, syncedAt),
+			...buildPocketFrontmatter([recording], settings, syncedAt, customTags),
 			artifact: artifactKind,
 		},
 	};

@@ -6,21 +6,25 @@ import type {
 	PocketSyncSettings,
 } from "../types";
 import { formatDisplayDateTime, formatDurationSeconds, formatTranscriptTimestamp } from "../utils/date";
-import { dedupeStrings, toObsidianTag } from "../utils/text";
+import { dedupeStrings, toCustomObsidianTag, toObsidianTag } from "../utils/text";
 
 export function buildInlineTagLine(
 	recordings: NormalizedPocketRecording[],
-	settings: Pick<PocketSyncSettings, "includeInlineObsidianTags">,
+	settings: Pick<PocketSyncSettings, "includeInlineObsidianTags" | "additionalTagsInline">,
+	customTags: string[] = [],
 ): string {
-	if (!settings.includeInlineObsidianTags) {
-		return "";
+	const tags: string[] = [];
+
+	if (settings.includeInlineObsidianTags) {
+		tags.push(...recordings.flatMap((recording) => recording.tags.map((tag) => toObsidianTag(tag.name))));
 	}
 
-	const tags = dedupeStrings(
-		recordings.flatMap((recording) => recording.tags.map((tag) => toObsidianTag(tag.name))),
-	);
+	if (settings.additionalTagsInline && customTags.length > 0) {
+		tags.push(...customTags.map(toCustomObsidianTag));
+	}
 
-	return tags.length > 0 ? `${tags.join(" ")}\n` : "";
+	const dedupedTags = dedupeStrings(tags);
+	return dedupedTags.length > 0 ? `${dedupedTags.join(" ")}\n` : "";
 }
 
 export function buildMetadataSection(
@@ -178,9 +182,10 @@ export function buildPocketFrontmatter(
 	recordings: NormalizedPocketRecording[],
 	settings: Pick<
 		PocketSyncSettings,
-		"includeTagsInFrontmatter" | "includeExtendedFrontmatterMetadata" | "addSourceFrontmatterField"
+		"includeTagsInFrontmatter" | "includeExtendedFrontmatterMetadata" | "addSourceFrontmatterField" | "additionalTagsInFrontmatter"
 	>,
 	syncedAt: string,
+	customTags: string[] = [],
 ): FrontmatterValueMap {
 	const first = recordings[0];
 	if (!first) {
@@ -206,6 +211,10 @@ export function buildPocketFrontmatter(
 
 	if (settings.includeTagsInFrontmatter) {
 		frontmatter.pocket_tags = dedupeStrings(recordings.flatMap((recording) => recording.tags.map((tag) => tag.name)));
+	}
+
+	if (settings.additionalTagsInFrontmatter && customTags.length > 0) {
+		frontmatter.tags = customTags;
 	}
 
 	if (settings.includeExtendedFrontmatterMetadata) {

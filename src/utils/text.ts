@@ -42,6 +42,14 @@ export function toObsidianTag(tag: string): string {
 		.replace(/^-|-$/g, "")}`;
 }
 
+export function toCustomObsidianTag(tag: string): string {
+	return `#${tag
+		.toLowerCase()
+		.replace(/[^a-z0-9/_-]+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "")}`;
+}
+
 export function quoteYamlString(value: string): string {
 	return `'${value.replace(/'/g, "''")}'`;
 }
