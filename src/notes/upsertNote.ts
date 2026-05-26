@@ -43,18 +43,24 @@ export async function upsertPocketNote(params: UpsertPocketNoteParams): Promise<
 	await ensureFolder(app, normalizedTargetPath);
 
 	let existingFile = getFileByPath(app, normalizedTargetPath);
-	if (!existingFile && previousPath) {
+	let targetExistsOnDisk = existingFile ? false : await isExistingFile(app, normalizedTargetPath);
+	if (!existingFile && !targetExistsOnDisk && previousPath) {
 		const previousFile = getFileByPath(app, previousPath);
 		if (previousFile && previousFile.path !== normalizedTargetPath && !dryRun) {
 			await ensureFolder(app, normalizedTargetPath);
 			await vault.rename(previousFile, normalizedTargetPath);
 			existingFile = getFileByPath(app, normalizedTargetPath);
+			targetExistsOnDisk = existingFile ? false : await isExistingFile(app, normalizedTargetPath);
 		} else if (previousFile) {
 			existingFile = previousFile;
 		}
 	}
 
-	const existingContent = existingFile ? await vault.read(existingFile) : "";
+	const existingContent = existingFile
+		? await vault.read(existingFile)
+		: targetExistsOnDisk
+			? await vault.adapter.read(normalizedTargetPath)
+			: "";
 	const nextContent = buildFinalContent(existingContent, rendered, noteManagementMode, includeFrontmatter);
 	const normalizedExistingContent = existingContent.trimEnd();
 	const normalizedNextContent = nextContent.trimEnd();
@@ -68,7 +74,7 @@ export async function upsertPocketNote(params: UpsertPocketNoteParams): Promise<
 
 	if (dryRun) {
 		return {
-			action: existingFile ? "updated" : "created",
+			action: existingFile || targetExistsOnDisk ? "updated" : "created",
 			finalPath: existingFile?.path ?? normalizedTargetPath,
 		};
 	}
@@ -78,6 +84,14 @@ export async function upsertPocketNote(params: UpsertPocketNoteParams): Promise<
 		return {
 			action: "updated",
 			finalPath: existingFile.path,
+		};
+	}
+
+	if (targetExistsOnDisk) {
+		await vault.adapter.write(normalizedTargetPath, normalizedNextContent);
+		return {
+			action: "updated",
+			finalPath: normalizedTargetPath,
 		};
 	}
 
@@ -252,10 +266,27 @@ async function ensureFolder(app: App, notePath: string): Promise<void> {
 	const parts = folderPath.split("/");
 	for (let index = 0; index < parts.length; index += 1) {
 		const partialPath = normalizePath(parts.slice(0, index + 1).join("/"));
-		if (!app.vault.getAbstractFileByPath(partialPath)) {
+		if (!app.vault.getAbstractFileByPath(partialPath) && !(await pathExists(app, partialPath))) {
 			await app.vault.adapter.mkdir(partialPath);
 		}
 	}
+}
+
+async function isExistingFile(app: App, path: string): Promise<boolean> {
+	const stat = await app.vault.adapter.stat(normalizePath(path));
+	if (!stat) {
+		return false;
+	}
+
+	if (stat.type === "file") {
+		return true;
+	}
+
+	throw new Error(`Cannot write Pocket note because "${path}" already exists and is not a file.`);
+}
+
+async function pathExists(app: App, path: string): Promise<boolean> {
+	return (await app.vault.adapter.stat(normalizePath(path))) !== null;
 }
 
 function getFileByPath(app: App, path: string | null): TFile | null {
