@@ -59,6 +59,11 @@ export default class PocketSyncPlugin extends Plugin {
 				...(loadedData?.state?.records ?? {}),
 			},
 		};
+		for (const record of Object.values(this.syncState.records)) {
+			if (!Array.isArray(record.artifactPaths)) {
+				record.artifactPaths = record.notePath ? [record.notePath] : [];
+			}
+		}
 
 		if (this.syncState.lastSyncStatus === "running") {
 			this.syncState.lastSyncStatus = "error";
