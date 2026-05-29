@@ -1,12 +1,30 @@
 import type {
 	FrontmatterValueMap,
+	NoteKind,
 	NormalizedPocketRecording,
 	PocketActionItem,
 	PocketActionItemSubtask,
 	PocketSyncSettings,
 } from "../types";
 import { formatDisplayDateTime, formatDurationSeconds, formatTranscriptTimestamp } from "../utils/date";
-import { dedupeStrings, toCustomObsidianTag, toObsidianTag } from "../utils/text";
+import { dedupeStrings, parseCommaSeparatedList, sanitizeTag, toCustomObsidianTag, toObsidianTag } from "../utils/text";
+
+/**
+ * Single source of truth for the user-configured additional tags applied to a
+ * note. Combines the shared "all notes" tags with the note-kind-specific tags,
+ * then parses, normalizes, drops empties (e.g. `!!!` sanitizes to nothing), and
+ * dedupes so inline and frontmatter output always represent the same identities.
+ */
+export function buildAdditionalTags(
+	settings: Pick<PocketSyncSettings, "additionalTags" | "additionalConversationTags" | "additionalInsightTags">,
+	kind: NoteKind,
+): string[] {
+	const kindSpecific = kind === "conversation" ? settings.additionalConversationTags : settings.additionalInsightTags;
+	const sanitized = parseCommaSeparatedList([settings.additionalTags, kindSpecific].join(","))
+		.map(sanitizeTag)
+		.filter(Boolean);
+	return dedupeStrings(sanitized);
+}
 
 export function buildInlineTagLine(
 	recordings: NormalizedPocketRecording[],

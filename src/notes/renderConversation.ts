@@ -1,7 +1,7 @@
 import type { ConversationArtifactKind, NormalizedPocketRecording, PocketSyncSettings, RenderedPocketNote } from "../types";
-import { parseCommaSeparatedList } from "../utils/text";
 import {
 	buildActionItemsMarkdownBody,
+	buildAdditionalTags,
 	buildInlineTagLine,
 	buildMetadataSection,
 	buildMindMapMarkdownBody,
@@ -12,16 +12,12 @@ import {
 	buildTranscriptSection,
 } from "./renderShared";
 
-function buildConversationCustomTags(settings: PocketSyncSettings): string[] {
-	return parseCommaSeparatedList([settings.additionalTags, settings.additionalConversationTags].join(","));
-}
-
 export function renderConversationNote(
 	recording: NormalizedPocketRecording,
 	settings: PocketSyncSettings,
 	syncedAt: string,
 ): RenderedPocketNote {
-	const customTags = buildConversationCustomTags(settings);
+	const customTags = buildAdditionalTags(settings, "conversation");
 	const sections: string[] = [];
 	const inlineTags = buildInlineTagLine([recording], settings, customTags);
 	const summarySection = buildSummarySection(recording, settings);
@@ -71,7 +67,7 @@ export function renderConversationArtifactNote(
 	syncedAt: string,
 	artifactKind: ConversationArtifactKind,
 ): RenderedPocketNote {
-	const customTags = buildConversationCustomTags(settings);
+	const customTags = buildAdditionalTags(settings, "conversation");
 	const title = `${recording.title} ${artifactTitle(artifactKind)}`;
 	const body = renderConversationArtifactBody(recording, settings, artifactKind);
 	return {

@@ -1,14 +1,13 @@
 import type { NormalizedPocketRecording, PocketSyncSettings, RenderedPocketNote } from "../types";
 import { formatLocalDate } from "../utils/date";
-import { parseCommaSeparatedList } from "../utils/text";
-import { buildInlineTagLine, buildMetadataSection, buildPocketFrontmatter, buildSummarySection, buildTranscriptSection } from "./renderShared";
+import { buildAdditionalTags, buildInlineTagLine, buildMetadataSection, buildPocketFrontmatter, buildSummarySection, buildTranscriptSection } from "./renderShared";
 
 export function renderInsightNote(
 	recordings: NormalizedPocketRecording[],
 	settings: PocketSyncSettings,
 	syncedAt: string,
 ): RenderedPocketNote {
-	const customTags = parseCommaSeparatedList([settings.additionalTags, settings.additionalInsightTags].join(","));
+	const customTags = buildAdditionalTags(settings, "insight");
 	const first = recordings[0];
 	const titleDate = first ? formatLocalDate(first.recordingAt) : formatLocalDate(new Date().toISOString());
 	const title =

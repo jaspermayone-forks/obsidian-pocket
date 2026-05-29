@@ -411,6 +411,11 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 		);
 
 		this.addSectionHeading(containerEl, "Additional Obsidian tags");
+		const additionalTagsHint = containerEl.createEl("p");
+		additionalTagsHint.appendText(
+			"Tags are normalized to valid Obsidian tags (lowercased, spaces become dashes). They only appear in notes once you enable a destination below — frontmatter, inline, or both. ",
+		);
+		additionalTagsHint.appendText("Frontmatter output also requires the “Include frontmatter” option to be turned on.");
 		new Setting(containerEl)
 			.setName("Tags for all notes")
 			.setDesc("Comma-separated Obsidian tags added to every synced note (conversations and insights).")
@@ -447,7 +452,7 @@ export class PocketSyncSettingTab extends PluginSettingTab {
 		this.addToggleSetting(
 			containerEl,
 			"Write additional tags to frontmatter",
-			"Add additional tags to the standard Obsidian tags: frontmatter field. This field is fully managed by Pocket Sync when enabled.",
+			"Merge additional tags into the standard Obsidian tags: property. Tags you add by hand are preserved. Requires the “Include frontmatter” option above.",
 			this.plugin.settings.additionalTagsInFrontmatter,
 			async (value) => this.plugin.updateSettings({ additionalTagsInFrontmatter: value }),
 		);
