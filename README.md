@@ -38,7 +38,13 @@ Sync Pocket AI conversations and insights into Markdown notes.
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Maclean-D/obsidian-pocket&type=Date)](https://star-history.com/#Maclean-D/obsidian-pocket&Date)
+<a href="https://www.star-history.com/?repos=Maclean-D%2Fobsidian-pocket&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Maclean-D/obsidian-pocket&type=date&theme=dark&legend=top-left&sealed_token=bQ2gRdsBH0tI8lR9ga2JWWotRgUogo6c44XCbt1x4HLSs2W4ANfv_EM3clwMuNaAZOEVZloj6tP1DKgIxxQvyPm7lxVPO8OVYrlX-HvXIMtmfpKJO7nIcE8FAuECOIvvJ4hW4i8wXKbDo9urMQfDTeLdl5YwLoBG7JitHY46Zo5pHBBn-AUkYDLWG1rC" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Maclean-D/obsidian-pocket&type=date&legend=top-left&sealed_token=bQ2gRdsBH0tI8lR9ga2JWWotRgUogo6c44XCbt1x4HLSs2W4ANfv_EM3clwMuNaAZOEVZloj6tP1DKgIxxQvyPm7lxVPO8OVYrlX-HvXIMtmfpKJO7nIcE8FAuECOIvvJ4hW4i8wXKbDo9urMQfDTeLdl5YwLoBG7JitHY46Zo5pHBBn-AUkYDLWG1rC" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Maclean-D/obsidian-pocket&type=date&legend=top-left&sealed_token=bQ2gRdsBH0tI8lR9ga2JWWotRgUogo6c44XCbt1x4HLSs2W4ANfv_EM3clwMuNaAZOEVZloj6tP1DKgIxxQvyPm7lxVPO8OVYrlX-HvXIMtmfpKJO7nIcE8FAuECOIvvJ4hW4i8wXKbDo9urMQfDTeLdl5YwLoBG7JitHY46Zo5pHBBn-AUkYDLWG1rC" />
+ </picture>
+</a>
 
 ## Contributors
 
